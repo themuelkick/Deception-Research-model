@@ -164,13 +164,20 @@ def update(frame):
         ray_intersects_triangle(catcher_pos, ray, tri) for tri in glove_triangles
     )
 
-    # Final visibility decision
+    # Final visibility
     visible = not (torso_blocked or glove_blocked)
     visibility_log.append(visible)
 
-    # Update visuals
-    wrist_dot._offsets3d = ([wrist[0]], [wrist[1]], [wrist[2]])
-    wrist_dot.set_color('g' if visible else 'r')
+    # Wrist dot color logic
+    if frame < peak_frame:
+        wrist_dot._offsets3d = ([wrist[0]], [wrist[1]], [wrist[2]])
+        wrist_dot.set_color('r')  # Pre-leg-lift = red
+    elif peak_frame <= frame <= release_frame:
+        wrist_dot._offsets3d = ([wrist[0]], [wrist[1]], [wrist[2]])
+        wrist_dot.set_color('g' if visible else 'r')  # Green if visible, red if hidden
+    else:
+        wrist_dot._offsets3d = ([], [], [])  # Make it disappear
+
     ax.set_title(f"Frame {frame} - {'Visible' if visible else 'Hidden'}")
     print(f"Frame {frame:3} → {'Visible' if visible else 'Hidden'}")
     return [sc, wrist_dot]
@@ -178,8 +185,18 @@ def update(frame):
 
 
 
+# --- Calculate peak leg lift frame ---
+peak_frame = int(np.argmax(z[label_to_index['LKNE']]))  # Use RKNE for LHPs
 
-
+# --- Estimate release frame ---
+release_frame = estimate_release_frame(
+    wrist_idx=wrist_idx,
+    head_idx=label_to_index['C7'],  # or STRN
+    x=x, y=y, z=z,
+    start_frame=peak_frame,
+    end_frame=n_frames,
+    speed_thresh=20  # Adjust if needed
+)
 
 # Run animation
 ani = animation.FuncAnimation(fig, update, frames=n_frames, interval=30, blit=False)
