@@ -16,6 +16,30 @@ x, y, z = points[0, :, :], points[1, :, :], points[2, :, :]
 n_markers, n_frames = x.shape
 label_to_index = {label: i for i, label in enumerate(labels)}
 
+visibility_log = []
+
+def estimate_release_frame(wrist_idx, head_idx, x, y, z, start_frame, end_frame, speed_thresh=20):
+    max_speed = 0
+    release_candidate = start_frame
+    for frame in range(start_frame + 1, end_frame):
+        prev = np.array([x[wrist_idx, frame - 1], y[wrist_idx, frame - 1], z[wrist_idx, frame - 1]])
+        curr = np.array([x[wrist_idx, frame], y[wrist_idx, frame], z[wrist_idx, frame]])
+        speed = np.linalg.norm(curr - prev)
+
+        # Optional: Only accept if wrist has passed the head forward on X-axis
+        if speed > speed_thresh:
+            wrist_x = x[wrist_idx, frame]
+            head_x = x[head_idx, frame]  # e.g. use C7 or STRN as reference
+            if wrist_x > head_x:
+                return frame
+
+        # Save max speed in case no good candidate
+        if speed > max_speed:
+            max_speed = speed
+            release_candidate = frame
+
+    return release_candidate
+
 # Improved triangle-ray intersection (Möller–Trumbore)
 def ray_intersects_triangle(orig, dir, tri):
     v0, v1, v2 = tri
@@ -134,23 +158,75 @@ def update(frame):
     except:
         torso_blocked = False
 
-    # Amplified glove occlusion
+    # Glove occlusion
     glove_triangles = get_glove_occlusion_triangles(frame, label_to_index, points)
     glove_blocked = any(
         ray_intersects_triangle(catcher_pos, ray, tri) for tri in glove_triangles
     )
 
-    # Visibility determination
+    # Final visibility
     visible = not (torso_blocked or glove_blocked)
+    visibility_log.append(visible)
 
-    # Update visuals
-    wrist_dot._offsets3d = ([wrist[0]], [wrist[1]], [wrist[2]])
-    wrist_dot.set_color('g' if visible else 'r')
-    ax.set_title(f"Frame {frame} - {'Visible' if visible else 'Hidden'}")
-    print(f"Frame {frame:3} → {'Visible' if visible else 'Hidden'}")
+    # Wrist dot behavior
+    if frame < peak_frame:
+        wrist_dot._offsets3d = ([wrist[0]], [wrist[1]], [wrist[2]])
+        wrist_dot.set_color('r')
+        ax.set_title(f"Frame {frame}")
+    elif peak_frame <= frame <= release_frame:
+        wrist_dot._offsets3d = ([wrist[0]], [wrist[1]], [wrist[2]])
+        wrist_dot.set_color('g' if visible else 'r')
+        ax.set_title(f"Frame {frame} - {'Visible' if visible else 'Hidden'}")
+    else:
+        wrist_dot._offsets3d = ([], [], [])
+        ax.set_title(f"Frame {frame}")
+
     return [sc, wrist_dot]
 
+
+# --- Calculate peak leg lift frame ---
+peak_frame = int(np.argmax(z[label_to_index['LKNE']]))  # Use RKNE for LHPs
+
+# --- Estimate release frame ---
+release_frame = estimate_release_frame(
+    wrist_idx=wrist_idx,
+    head_idx=label_to_index['C7'],  # or STRN
+    x=x, y=y, z=z,
+    start_frame=peak_frame,
+    end_frame=n_frames,
+    speed_thresh=20  # Adjust if needed
+)
 
 # Run animation
 ani = animation.FuncAnimation(fig, update, frames=n_frames, interval=30, blit=False)
 plt.show()
+
+# --- Compute Visibility Score from Peak Leg Lift ---
+
+# Use lead knee for leg lift — usually LKNE for RHP
+lkne_idx = label_to_index['LKNE']
+lead_knee_z = z[lkne_idx]  # vertical position over time
+peak_frame = int(np.argmax(lead_knee_z))
+
+# Use C7 or STRN as reference marker for forward position
+head_idx = label_to_index['C7']
+
+release_frame = estimate_release_frame(
+    wrist_idx=wrist_idx,
+    head_idx=head_idx,
+    x=x, y=y, z=z,
+    start_frame=peak_frame,
+    end_frame=n_frames,
+    speed_thresh=20  # Tune as needed
+)
+
+visible_window = visibility_log[peak_frame:release_frame]
+num_visible = sum(visible_window)
+total = len(visible_window)
+score_percent = 100 * num_visible / total if total > 0 else 0
+
+print("\n--- Visibility Summary ---")
+print(f"From frame {peak_frame} (peak leg lift) to {release_frame} (release)")
+print(f"Visible Frames: {num_visible} / {total}")
+print(f"Visibility Score: {score_percent:.1f}%")
+
