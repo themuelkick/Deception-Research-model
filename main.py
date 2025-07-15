@@ -38,6 +38,40 @@ def ray_intersects_triangle(orig, dir, tri):
     t = f * np.dot(edge2, q)
     return t > eps
 
+def get_glove_occlusion_triangles(frame, label_to_index, points):
+    if not all(label in label_to_index for label in ['LSHO', 'LELB', 'LWRA', 'LWRB']):
+        return []
+
+    lsho = points[:3, label_to_index['LSHO'], frame]
+    lelb = points[:3, label_to_index['LELB'], frame]
+    lwra = points[:3, label_to_index['LWRA'], frame]
+    lwrb = points[:3, label_to_index['LWRB'], frame]
+
+    forearm_vec = lwra - lelb
+    forearm_vec /= np.linalg.norm(forearm_vec)
+
+    perp1 = np.cross(forearm_vec, [1, 0, 0])
+    if np.linalg.norm(perp1) < 1e-6:
+        perp1 = np.cross(forearm_vec, [0, 1, 0])
+    perp1 /= np.linalg.norm(perp1)
+    perp2 = np.cross(forearm_vec, perp1)
+    perp2 /= np.linalg.norm(perp2)
+
+    offset_1 = lwra + 150 * perp1
+    offset_2 = lwra - 150 * perp1
+    offset_3 = lwra + 150 * perp2
+    offset_4 = lwra - 150 * perp2
+
+    triangles = [
+        (lelb, lwra, offset_1),
+        (lelb, lwra, offset_2),
+        (lelb, lwra, offset_3),
+        (lelb, lwra, offset_4),
+        (lwra, offset_1, offset_2),
+        (lwra, offset_3, offset_4),
+    ]
+    return triangles
+
 # Build torso mesh
 torso_markers = ['CLAV', 'STRN', 'C7', 'T10', 'RSHO', 'LSHO', 'RASI', 'LASI', 'RPSI', 'LPSI']
 torso_indices = [label_to_index[m] for m in torso_markers if m in label_to_index]
@@ -100,23 +134,22 @@ def update(frame):
     except:
         torso_blocked = False
 
-    # Left arm occlusion
-    arm_blocked = False
-    for i1, i2, i3 in left_arm_triangles:
-        v0 = points[:3, i1, frame]
-        v1 = points[:3, i2, frame]
-        v2 = points[:3, i3, frame]
-        triangle = np.array([v0, v1, v2])
-        if ray_intersects_triangle(catcher_pos, ray, triangle):
-            arm_blocked = True
-            break
+    # Amplified glove occlusion
+    glove_triangles = get_glove_occlusion_triangles(frame, label_to_index, points)
+    glove_blocked = any(
+        ray_intersects_triangle(catcher_pos, ray, tri) for tri in glove_triangles
+    )
 
-    visible = not (torso_blocked or arm_blocked)
+    # Visibility determination
+    visible = not (torso_blocked or glove_blocked)
+
+    # Update visuals
     wrist_dot._offsets3d = ([wrist[0]], [wrist[1]], [wrist[2]])
     wrist_dot.set_color('g' if visible else 'r')
     ax.set_title(f"Frame {frame} - {'Visible' if visible else 'Hidden'}")
     print(f"Frame {frame:3} → {'Visible' if visible else 'Hidden'}")
     return [sc, wrist_dot]
+
 
 # Run animation
 ani = animation.FuncAnimation(fig, update, frames=n_frames, interval=30, blit=False)
