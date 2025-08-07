@@ -4,7 +4,7 @@
 
 This project analyzes baseball pitching mechanics using 3D motion capture data to determine how long the throwing hand (ball) is visible to the catcher throughout the delivery.
 
-It leverages `.c3d` marker data, reconstructs a 3D skeleton, and animates the delivery while dynamically determining hand visibility based on torso and glove occlusion.
+It leverages `.c3d` marker data, reconstructs a 3D skeleton, and animates the delivery while dynamically determining hand visibility based on head, torso and glove occlusion.
 
 ---
 
