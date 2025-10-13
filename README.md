@@ -1,6 +1,6 @@
 # Deception-Research-model
 
-# Pitch Visibility Analysis using Motion Capture (C3D)
+Pitch Visibility Analysis using Motion Capture 
 
 This project analyzes baseball pitching mechanics using 3D motion capture data to determine how long the throwing hand (ball) is visible to the catcher throughout the delivery.
 
@@ -8,7 +8,7 @@ It leverages `.c3d` marker data, reconstructs a 3D skeleton, and animates the de
 
 ---
 
-## Key Features
+Features
 
 - Visualizes 3D skeletons from C3D motion capture data.
 - Detects when the throwing hand is hidden or visible from the catcher’s point of view.
@@ -17,7 +17,6 @@ It leverages `.c3d` marker data, reconstructs a 3D skeleton, and animates the de
 - 3D animated matplotlib output with real-time color-coded wrist tracking.
 
 ---
-## Future Features
+Future Features
 - Give visibility score as a part of a weighted deception score. 
-## Project Structure
 
